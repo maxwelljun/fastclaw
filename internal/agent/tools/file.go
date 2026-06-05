@@ -203,7 +203,7 @@ func hostHomePath(path string) (string, bool) {
 		//                     in-sandbox the model naturally calls
 		//                     read_file with the same path; that path only
 		//                     resolves inside the container.
-		if strings.HasPrefix(path, "~/.fastclaw") || strings.HasPrefix(path, "~/.agents") {
+		if isFastClawInternalPath(path) || strings.HasPrefix(path, "~/.agents") {
 			return "", false
 		}
 		home, err := os.UserHomeDir()
@@ -222,11 +222,8 @@ func hostHomePath(path string) (string, bool) {
 		// Refuse FastClaw-internal subpaths even when the chatter
 		// reaches them via the host-home channel. Same guard as
 		// errGlobalSkillsDirWrite, broader scope.
-		if home, err := os.UserHomeDir(); err == nil {
-			fastclawDir := filepath.Join(home, ".fastclaw")
-			if path == fastclawDir || strings.HasPrefix(path, fastclawDir+string(filepath.Separator)) {
-				return "", false
-			}
+		if isFastClawInternalPath(path) {
+			return "", false
 		}
 		return path, true
 	}
