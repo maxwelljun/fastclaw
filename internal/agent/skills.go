@@ -269,12 +269,14 @@ func (sl *SkillsLoader) LoadSkills() []Skill {
 		}
 	}
 
-	// Apply gating and env injection
+	// Keep gated skills in the catalog instead of hiding them. The model
+	// still needs to know they exist so it can explain that credentials,
+	// binaries, or OS support are missing instead of claiming the skill is
+	// not installed.
 	result := make([]Skill, 0, len(skillsMap))
 	for _, s := range skillsMap {
 		if s.Gated {
 			slog.Debug("skill gated", "name", s.Name, "reason", s.GateReason)
-			continue
 		}
 		result = append(result, s)
 	}
@@ -313,8 +315,12 @@ func (sl *SkillsLoader) BuildSkillsSummary(skills []Skill) string {
 		if desc == "" {
 			desc = "(no description)"
 		}
-		fmt.Fprintf(&sb, "- %s — %s\n", skill.Name, desc)
-		if alwaysLoad[skill.Name] || skillAlwaysLoads(skill) {
+		if skill.Gated {
+			fmt.Fprintf(&sb, "- %s — %s (currently unavailable: %s)\n", skill.Name, desc, skill.GateReason)
+		} else {
+			fmt.Fprintf(&sb, "- %s — %s\n", skill.Name, desc)
+		}
+		if !skill.Gated && (alwaysLoad[skill.Name] || skillAlwaysLoads(skill)) {
 			inline = append(inline, skill)
 		}
 	}
