@@ -51,11 +51,11 @@ type Agent struct {
 	// even after the operator explicitly chose chatbot/customize.
 	// PromptMode also drives the per-turn tool filter via
 	// builtinAllowForMode below.
-	promptMode string
-	homePath        string // agent's home: SOUL.md, sessions, memory, skills
-	workspacePath   string // working dir where agent creates user files
-	homeDir         string // FastClaw root, ~/.fastclaw
-	ownerUserID     string // the user that owns this agent (for hook namespacing)
+	promptMode    string
+	homePath      string // agent's home: SOUL.md, sessions, memory, skills
+	workspacePath string // working dir where agent creates user files
+	homeDir       string // FastClaw root, ~/.fastclaw
+	ownerUserID   string // the user that owns this agent (for hook namespacing)
 	// admins is the per-channel allowlist of chatters who can run write-
 	// mode slash commands (/new /undo /retry /compact /model /personality).
 	// Keyed by channel name (e.g. "discord" → ["123...", "456..."]). Empty
@@ -153,17 +153,17 @@ func (a *Agent) SetSandboxPool(p sandbox.ExecutorPool) {
 // bindSession wires per-turn session state into the tool registry: the
 // session-scoped sandbox executor (when a pool is configured), the
 // sessionID workspace.Store calls use to namespace artifacts, and the
-// (channel, chatID) bus address so deferred-work tools (create_cron_job)
+// (channel, accountID, chatID) bus address so deferred-work tools (create_cron_job)
 // can stamp it onto persisted rows for later replay. Called at the top
 // of HandleMessage / HandleMessageStream before any tool runs.
 //
 // Mutating the shared registry across concurrent chats would race, but
 // the current invariant is one chat-in-flight per agent — the gateway
 // serializes per-agent turns. Documenting it here in case that changes.
-func (a *Agent) bindSession(ctx context.Context, channel, sessionID, projectID string) {
+func (a *Agent) bindSession(ctx context.Context, channel, accountID, sessionID, projectID string) {
 	a.registry.SetSessionID(sessionID)
 	a.registry.SetProjectID(projectID)
-	a.registry.SetMessageContext(channel, sessionID)
+	a.registry.SetMessageContext(channel, accountID, sessionID)
 	if a.sandboxPool == nil {
 		return
 	}
@@ -308,15 +308,15 @@ func NewAgentWithSkillsCfg(rc config.ResolvedAgent, prov provider.Provider, mb *
 		maxParallelToolCalls: rc.MaxParallelToolCalls,
 		thinking:             rc.Thinking,
 		promptMode:           rc.PromptMode,
-		homePath:        rc.Home,
-		workspacePath:   workspace,
-		homeDir:         homeDir,
-		admins:          rc.Admins,
-		skillsCfg:       rc.Skills,
-		globalSkillsCfg: globalSkillsCfg,
-		messageBus:      mb,
-		engine:          eng,
-		costTracker:     eng.costTracker,
+		homePath:             rc.Home,
+		workspacePath:        workspace,
+		homeDir:              homeDir,
+		admins:               rc.Admins,
+		skillsCfg:            rc.Skills,
+		globalSkillsCfg:      globalSkillsCfg,
+		messageBus:           mb,
+		engine:               eng,
+		costTracker:          eng.costTracker,
 	}
 
 	// Multi-bubble split-replies: per-agent only — system-level toggle
@@ -1784,7 +1784,7 @@ func (a *Agent) HandleMessage(ctx context.Context, msg bus.InboundMessage) strin
 	// + writes get session-scoped paths and (when a sandbox pool is
 	// wired) the executor used by exec/read_file/list_dir is tied to a
 	// session-private container.
-	a.bindSession(ctx, msg.Channel, msg.ChatID, msg.ProjectID)
+	a.bindSession(ctx, msg.Channel, msg.AccountID, msg.ChatID, msg.ProjectID)
 	// Flag whether this turn's chatter is the agent owner / channel
 	// admin. File tools use this to refuse identity-file reads from
 	// regular chatters (SOUL/IDENTITY/BOOTSTRAP/... leak as verbatim
@@ -2520,7 +2520,7 @@ func (a *Agent) HandleMessageStream(ctx context.Context, msg bus.InboundMessage)
 	// for DBStore session writes — Session.ctx() rebuilds ctx from its
 	// own fields, so the chatter has to live on sess itself.
 	sess.SetChatter(chatterUID)
-	a.bindSession(ctx, msg.Channel, msg.ChatID, msg.ProjectID)
+	a.bindSession(ctx, msg.Channel, msg.AccountID, msg.ChatID, msg.ProjectID)
 	a.registry.SetCallerIsAdmin(a.isAdminChatter(msg))
 	a.registry.SetGoalSessionKey(sess.SessionKey())
 	// Per-user file writes (USER.md / MEMORY.md) need to land in the
@@ -2941,20 +2941,20 @@ func (a *Agent) RegisteredTools() []tools.ToolInfo {
 // support / role-play products:
 //
 //   - image_gen     : self-generated images (registered only if a
-//                     provider is configured; absence is fine)
+//     provider is configured; absence is fine)
 //   - tts           : voice messages (same conditional registration)
 //   - write_file    : persist USER.md / MEMORY.md when the LLM learns
-//                     something worth keeping. Routing in
-//                     systemFileUserID sends USER.md/MEMORY.md to the
-//                     per-chatter row, so each chatter accrues their
-//                     own profile / memory. Path resolution rejects
-//                     arbitrary paths via identityFileBlocked +
-//                     workspace scoping, so this isn't a general
-//                     "let the chatbot write anywhere" hole — just
-//                     the canonical per-chatter notes.
+//     something worth keeping. Routing in
+//     systemFileUserID sends USER.md/MEMORY.md to the
+//     per-chatter row, so each chatter accrues their
+//     own profile / memory. Path resolution rejects
+//     arbitrary paths via identityFileBlocked +
+//     workspace scoping, so this isn't a general
+//     "let the chatbot write anywhere" hole — just
+//     the canonical per-chatter notes.
 //   - edit_file     : same rationale; preferred over write_file when
-//                     surgically updating MEMORY.md so the model
-//                     doesn't accidentally clobber prior entries.
+//     surgically updating MEMORY.md so the model
+//     doesn't accidentally clobber prior entries.
 //
 // Notably absent: `read_file` / `list_dir` — chatbot mode shouldn't
 // browse the filesystem; USER.md / MEMORY.md content is already loaded

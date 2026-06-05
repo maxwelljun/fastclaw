@@ -27,7 +27,8 @@ type deleteCronJobArgs struct {
 // RegisterCronTools registers cron job management tools.
 //
 // Channel + chatID for the originating turn are read from the registry
-// at execute time via r.MessageChannel() / r.MessageChatID() so a single
+// at execute time via r.MessageChannel() / r.MessageAccountID() /
+// r.MessageChatID() so a single
 // registration at agent construction handles every chat context the
 // agent runs in. The agent loop's bindSession stamps the per-turn
 // values onto the registry before any tool fires.
@@ -103,6 +104,7 @@ func makeCreateCronJob(st store.Store, r *Registry, userID, agentID string) Tool
 		// stamps it on every turn, so this captures the channel/chatID
 		// the user was on when they asked for the reminder.
 		channel := r.MessageChannel()
+		accountID := r.MessageAccountID()
 		chatID := r.MessageChatID()
 
 		// The chatter's effective timezone governs how the schedule is
@@ -155,6 +157,7 @@ func makeCreateCronJob(st store.Store, r *Registry, userID, agentID string) Tool
 			Schedule:  args.Schedule,
 			Message:   args.Message,
 			Channel:   channel,
+			AccountID: accountID,
 			ChatID:    chatID,
 			// "" = server-local; the scheduler's LocationOf maps it
 			// the same way LoadLocationOrLocal did above, so creation

@@ -248,6 +248,41 @@ func TestProcessDueJobs_Cron(t *testing.T) {
 	}
 }
 
+func TestProcessDueJobs_PreservesAccountID(t *testing.T) {
+	mb := bus.New()
+	store := newMockStore()
+	store.addJob(StoreJob{
+		ID:        "telegram-1",
+		AgentID:   "agent-1",
+		Name:      "telegram reminder",
+		Type:      "once",
+		Message:   "remind",
+		Channel:   "telegram",
+		AccountID: "dclaw_official_bot",
+		ChatID:    "8169894742",
+	})
+
+	s := &Scheduler{
+		bus:        mb,
+		store:      store,
+		instanceID: "test",
+	}
+
+	s.processDueJobs(context.Background())
+
+	select {
+	case msg := <-mb.Inbound:
+		if msg.AccountID != "dclaw_official_bot" {
+			t.Fatalf("AccountID = %q, want dclaw_official_bot", msg.AccountID)
+		}
+		if msg.Channel != "telegram" || msg.ChatID != "8169894742" {
+			t.Fatalf("destination = (%q, %q), want (telegram, 8169894742)", msg.Channel, msg.ChatID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected fired inbound message")
+	}
+}
+
 func TestNextCronOccurrence(t *testing.T) {
 	// Test "every 2 minutes" cron
 	now := time.Date(2026, 5, 6, 10, 3, 0, 0, time.UTC)
