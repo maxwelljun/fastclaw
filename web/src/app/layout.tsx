@@ -31,7 +31,7 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "FastClaw",
+  title: "MyClaw",
   description: "AI Agent Framework",
 };
 
