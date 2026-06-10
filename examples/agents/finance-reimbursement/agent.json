@@ -1,0 +1,21 @@
+{
+  "model": "",
+  "temperature": 0.2,
+  "maxToolIterations": 12,
+  "maxParallelToolCalls": 4,
+  "promptMode": "agent",
+  "autoPersist": true,
+  "skills": {
+    "alwaysLoad": [
+      "reimbursement-intake",
+      "receipt-audit",
+      "reimbursement-report",
+      "data-analysis",
+      "code-runner"
+    ]
+  },
+  "sandbox": {
+    "enabled": true
+  },
+  "tools": {}
+}
