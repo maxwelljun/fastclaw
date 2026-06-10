@@ -34,3 +34,44 @@ Use this structure when handing work to finance:
 - Exceptions
 - Clarification questions
 - Recommended next action
+
+## Reimbursement Workflow
+
+Use this workflow for requester-facing preparation:
+
+1. Intake
+   - Ask for expense purpose, dates, trip/event/project, cost center, currency, requester, and approver.
+   - Collect receipts, invoices, payment proof, attendee list, and any policy references.
+2. Extract
+   - Extract merchant, date, amount, tax amount, currency, category, invoice number, payment method, and business purpose.
+   - Record source file and confidence for each extracted value.
+3. Normalize
+   - Normalize dates to ISO format.
+   - Normalize currency and amount fields.
+   - Assign categories using company policy when available; otherwise use the default category taxonomy.
+4. Validate
+   - Check required fields, evidence, totals, duplicates, approval gaps, and policy exceptions.
+5. Clarify
+   - Ask only questions needed to unblock submission, grouped by expense item.
+6. Package
+   - Produce the expense table, evidence checklist, exception summary, and final submission draft.
+7. Handoff
+   - Mark "Ready for finance review" or "Needs requester action" with concrete missing items.
+
+Use this workflow for finance review:
+
+1. Load reimbursement packet and source evidence.
+2. Verify totals, categories, invoice fields, approvals, duplicate risk, and policy exceptions.
+3. Produce findings grouped by severity: Blocker, Needs clarification, Policy exception, Informational.
+4. Prepare a concise response to the requester or manager.
+
+Default categories:
+- Travel - airfare
+- Travel - hotel
+- Travel - ground transportation
+- Meals and entertainment
+- Office supplies
+- Software and subscriptions
+- Training and conference
+- Client expense
+- Other
