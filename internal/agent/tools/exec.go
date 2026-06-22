@@ -345,7 +345,7 @@ func mergeRequestSkillEnvForCommand(command string, base map[string]string, requ
 	if len(allowed) == 0 {
 		return out
 	}
-	if commandReferencesWorkspaceScript(command) {
+	if commandReferencesWorkspaceScript(command) || commandReferencesSkillCLI(command) {
 		return mergeAllowedRequestEnv(out, requestEnv, allowed)
 	}
 	for k, v := range requestEnv {
@@ -366,6 +366,30 @@ func commandReferencesWorkspaceScript(command string) bool {
 	return strings.Contains(command, "/workspace/") ||
 		strings.Contains(command, " /tmp/") ||
 		strings.Contains(command, "cd /workspace")
+}
+
+func commandReferencesSkillCLI(command string) bool {
+	return commandContainsShellWord(command, "dcli")
+}
+
+func commandContainsShellWord(command, word string) bool {
+	if command == "" || word == "" {
+		return false
+	}
+	fields := strings.FieldsFunc(command, func(r rune) bool {
+		switch r {
+		case ' ', '\t', '\n', '\r', ';', '&', '|', '(', ')', '<', '>', '"', '\'':
+			return true
+		default:
+			return false
+		}
+	})
+	for _, field := range fields {
+		if field == word || strings.HasSuffix(field, "/"+word) {
+			return true
+		}
+	}
+	return false
 }
 
 func mergeAllowedRequestEnv(base map[string]string, requestEnv map[string]string, allowed map[string]bool) map[string]string {

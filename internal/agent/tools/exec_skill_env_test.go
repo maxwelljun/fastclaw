@@ -186,3 +186,44 @@ Run.`
 		t.Fatal("undeclared request env should not be injected")
 	}
 }
+
+func TestResolveRegistrySkillEnvInjectsDeclaredEnvForSkillCLI(t *testing.T) {
+	skillsDir := filepath.Join(t.TempDir(), "skills")
+	skillDir := filepath.Join(skillsDir, "deepcoin-portfolio")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `---
+name: deepcoin-portfolio
+metadata:
+  openclaw:
+    requires:
+      env: ["DC_API_KEY", "DC_SECRET_KEY", "DC_PASSPHRASE"]
+---
+
+Run dcli account balance.`
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewRegistry(t.TempDir(), t.TempDir())
+	r.SetRequestSkillEnv(map[string]string{
+		"DC_API_KEY":    "key",
+		"DC_SECRET_KEY": "secret",
+		"DC_PASSPHRASE": "pass",
+		"UNDECLARED":    "drop",
+	})
+
+	got := resolveRegistrySkillEnv(
+		`export PATH="/root/.local/bin:$PATH" && dcli account balance --inst-type SWAP --json`,
+		r,
+		nil,
+		[]string{skillsDir},
+	)
+	if got["DC_API_KEY"] != "key" || got["DC_SECRET_KEY"] != "secret" || got["DC_PASSPHRASE"] != "pass" {
+		t.Fatalf("declared request env not injected for skill CLI: %#v", got)
+	}
+	if _, ok := got["UNDECLARED"]; ok {
+		t.Fatal("undeclared request env should not be injected")
+	}
+}
