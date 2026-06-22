@@ -345,8 +345,33 @@ func mergeRequestSkillEnvForCommand(command string, base map[string]string, requ
 	if len(allowed) == 0 {
 		return out
 	}
+	if commandReferencesWorkspaceScript(command) {
+		return mergeAllowedRequestEnv(out, requestEnv, allowed)
+	}
 	for k, v := range requestEnv {
 		if allowed[k] && strings.Contains(command, k) {
+			if out == nil {
+				out = make(map[string]string)
+			}
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func commandReferencesWorkspaceScript(command string) bool {
+	return strings.Contains(command, "/workspace/") ||
+		strings.Contains(command, " /tmp/") ||
+		strings.Contains(command, "cd /workspace")
+}
+
+func mergeAllowedRequestEnv(base map[string]string, requestEnv map[string]string, allowed map[string]bool) map[string]string {
+	out := copyEnvMap(base)
+	for k, v := range requestEnv {
+		if allowed[k] {
 			if out == nil {
 				out = make(map[string]string)
 			}

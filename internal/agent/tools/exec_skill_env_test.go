@@ -150,3 +150,39 @@ EOF`,
 		t.Fatal("undeclared request env should not be injected")
 	}
 }
+
+func TestResolveRegistrySkillEnvInjectsDeclaredEnvForWorkspaceScript(t *testing.T) {
+	skillsDir := filepath.Join(t.TempDir(), "skills")
+	skillDir := filepath.Join(skillsDir, "deepcoin-portfolio")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `---
+name: deepcoin-portfolio
+metadata:
+  openclaw:
+    requires:
+      env: ["DC_API_KEY", "DC_SECRET_KEY", "DC_PASSPHRASE"]
+---
+
+Run.`
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewRegistry(t.TempDir(), t.TempDir())
+	r.SetRequestSkillEnv(map[string]string{
+		"DC_API_KEY":    "key",
+		"DC_SECRET_KEY": "secret",
+		"DC_PASSPHRASE": "pass",
+		"UNDECLARED":    "drop",
+	})
+
+	got := resolveRegistrySkillEnv("python3 /workspace/query_balance.py", r, nil, []string{skillsDir})
+	if got["DC_API_KEY"] != "key" || got["DC_SECRET_KEY"] != "secret" || got["DC_PASSPHRASE"] != "pass" {
+		t.Fatalf("declared request env not injected for workspace script: %#v", got)
+	}
+	if _, ok := got["UNDECLARED"]; ok {
+		t.Fatal("undeclared request env should not be injected")
+	}
+}
