@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/fastclaw-ai/fastclaw/internal/agent"
 	"github.com/fastclaw-ai/fastclaw/internal/auth"
@@ -292,6 +293,7 @@ func (s *Server) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		Text:      userText,
 		PeerKind:  "dm",
 		Params:    req.Params,
+		SkillEnv:  extractSkillEnvHeaders(r.Header),
 		PhotoURLs: req.inlineImageURLs(),
 	}
 
@@ -316,6 +318,71 @@ func (s *Server) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		reply := ag.HandleMessage(r.Context(), msg)
 		s.fullResponse(w, reply, chatID, model, now)
 	}
+}
+
+const skillEnvHeaderPrefix = "X-Fastclaw-Skill-Env-"
+
+func extractSkillEnvHeaders(h http.Header) map[string]string {
+	env := make(map[string]string)
+	for name, values := range h {
+		if !strings.HasPrefix(strings.ToLower(name), strings.ToLower(skillEnvHeaderPrefix)) {
+			continue
+		}
+		key := normalizeSkillEnvHeaderName(name[len(skillEnvHeaderPrefix):])
+		if key == "" || skillEnvKeyBlocked(key) {
+			continue
+		}
+		for _, v := range values {
+			if v = strings.TrimSpace(v); v != "" {
+				env[key] = v
+				break
+			}
+		}
+	}
+	if len(env) == 0 {
+		return nil
+	}
+	return env
+}
+
+func normalizeSkillEnvHeaderName(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == '-' || r == '_' || r == '.':
+			b.WriteByte('_')
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(unicode.ToUpper(r))
+		default:
+			return ""
+		}
+	}
+	key := b.String()
+	if key == "" || key[0] >= '0' && key[0] <= '9' {
+		return ""
+	}
+	return key
+}
+
+func skillEnvKeyBlocked(key string) bool {
+	if key == "" {
+		return true
+	}
+	blockedPrefixes := []string{
+		"FASTCLAW_",
+		"AWS_",
+		"GOOGLE_APPLICATION_CREDENTIALS",
+	}
+	for _, p := range blockedPrefixes {
+		if strings.HasPrefix(key, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) streamResponseFromAgent(w http.ResponseWriter, r *http.Request, ag *agent.Agent, msg bus.InboundMessage, chatID, model string, created int64) {
@@ -420,4 +487,3 @@ func resolveAgent(space *UserSpaceView, agentID string) *agent.Agent {
 	}
 	return nil
 }
-

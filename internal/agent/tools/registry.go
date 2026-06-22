@@ -285,6 +285,11 @@ type Registry struct {
 	// configured.
 	envProvider SkillEnvProvider
 	skillDirs   []string
+	// requestSkillEnv is the per-turn credential overlay supplied by
+	// API request headers. It is set by the agent loop at the start of
+	// each turn and cleared at the end; unlike envProvider values it is
+	// never persisted to config or rendered into prompts.
+	requestSkillEnv map[string]string
 	// turnFailures records (toolName, argsHash) → previous error
 	// summary for tool calls that already failed earlier in the
 	// current turn. StartTurn resets this map; tool implementations
@@ -480,6 +485,36 @@ func (r *Registry) SetCallerIsAdmin(v bool) {
 // of every turn.
 func (r *Registry) SetProjectID(projectID string) {
 	r.projectID = projectID
+}
+
+// SetRequestSkillEnv installs a per-turn skill env overlay. Values are
+// copied so callers can safely reuse or mutate their input map. Passing
+// nil or an empty map clears the overlay.
+func (r *Registry) SetRequestSkillEnv(env map[string]string) {
+	if len(env) == 0 {
+		r.requestSkillEnv = nil
+		return
+	}
+	cp := make(map[string]string, len(env))
+	for k, v := range env {
+		if k != "" {
+			cp[k] = v
+		}
+	}
+	r.requestSkillEnv = cp
+}
+
+// RequestSkillEnv returns a copy of the current per-turn skill env
+// overlay. Callers may filter it by skill manifest before use.
+func (r *Registry) RequestSkillEnv() map[string]string {
+	if len(r.requestSkillEnv) == 0 {
+		return nil
+	}
+	cp := make(map[string]string, len(r.requestSkillEnv))
+	for k, v := range r.requestSkillEnv {
+		cp[k] = v
+	}
+	return cp
 }
 
 // ProjectID returns the project scope of the in-flight turn, or "" when

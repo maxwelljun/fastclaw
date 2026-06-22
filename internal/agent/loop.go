@@ -1874,6 +1874,8 @@ func (a *Agent) HandleMessage(ctx context.Context, msg bus.InboundMessage) strin
 	// per-turn chatter's row, not the UserSpace owner — see
 	// Registry.systemFileUserID for the routing rule.
 	a.registry.SetChatterUserID(chatterUID)
+	a.registry.SetRequestSkillEnv(msg.SkillEnv)
+	defer a.registry.SetRequestSkillEnv(nil)
 
 	// Steering: mark a turn in-flight so messages arriving mid-run are
 	// buffered onto the session (drained between tool iterations below)
@@ -2612,6 +2614,8 @@ func (a *Agent) HandleMessageStream(ctx context.Context, msg bus.InboundMessage)
 	// per-turn chatter's row, not the UserSpace owner — see
 	// Registry.systemFileUserID for the routing rule.
 	a.registry.SetChatterUserID(chatterUID)
+	a.registry.SetRequestSkillEnv(msg.SkillEnv)
+	defer a.registry.SetRequestSkillEnv(nil)
 
 	// Same orphan-tool_use safety net as HandleMessage. The streaming path
 	// previously lacked this, so loop detection (which appends an assistant

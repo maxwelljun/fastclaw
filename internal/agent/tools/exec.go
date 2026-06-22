@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -164,10 +166,7 @@ func makeExecToolFull(r *Registry, sbCfg *SandboxConfig, envProvider SkillEnvPro
 			// Always pass an explicit (scrubbed) env so the child
 			// never inherits raw os.Environ() — that's the leak path
 			// that put OSS AccessKey + DB DSN in chat replies.
-			var skillEnv map[string]string
-			if envProvider != nil && skillDirs != nil {
-				skillEnv = resolveSkillEnv(args.Command, envProvider, skillDirs)
-			}
+			skillEnv := resolveRegistrySkillEnv(args.Command, r, envProvider, skillDirs)
 			sessEnv := buildSubprocessEnv(skillEnv)
 			s, err := r.shellMgr.Start(command, sessEnv)
 			if err != nil {
@@ -178,6 +177,7 @@ func makeExecToolFull(r *Registry, sbCfg *SandboxConfig, envProvider SkillEnvPro
 
 		if useSandbox && sbCfg != nil && sbCfg.Pool != nil {
 			sb := sbCfg.Pool.Get(sbCfg.AgentID, sbCfg.Image, sbCfg.Workspace, sbCfg.Policy)
+			command = prependSkillEnvExports(command, resolveRegistrySkillEnv(args.Command, r, envProvider, skillDirs), nil)
 			out, err := sb.Exec(execCtx, command, "/workspace")
 			return MetaSandboxPrefix + out, err
 		}
@@ -198,10 +198,7 @@ func makeExecToolFull(r *Registry, sbCfg *SandboxConfig, envProvider SkillEnvPro
 		// inherit the parent's full env, which leaks daemon secrets
 		// (FASTCLAW_STORAGE_DSN, FASTCLAW_OBJECT_STORE_*, ...) into
 		// every shell the model can run.
-		var skillEnv map[string]string
-		if envProvider != nil && skillDirs != nil {
-			skillEnv = resolveSkillEnv(args.Command, envProvider, skillDirs)
-		}
+		skillEnv := resolveRegistrySkillEnv(args.Command, r, envProvider, skillDirs)
 		cmd.Env = buildSubprocessEnv(skillEnv)
 
 		output, err := cmd.CombinedOutput()
@@ -237,31 +234,128 @@ func sbCfgImage(sbCfg *SandboxConfig) string {
 //     sandbox use this form. Without this branch, env injection
 //     silently broke for ALL sandbox calls (the host paths in
 //     skillDirs never appear in /workspace-cd'd commands).
-func resolveSkillEnv(command string, envProvider SkillEnvProvider, skillDirs []string) map[string]string {
-	// 1. host paths
+func resolveSkillEnv(command string, envProvider SkillEnvProvider, requestEnv map[string]string, skillDirs []string) map[string]string {
+	skillName := skillNameFromCommand(command, skillDirs)
+	if skillName == "" {
+		return nil
+	}
+	return mergeRequestSkillEnvForSkill(skillName, configuredSkillEnv(envProvider, skillName), requestEnv, skillDirs)
+}
+
+func resolveRegistrySkillEnv(command string, r *Registry, envProvider SkillEnvProvider, skillDirs []string) map[string]string {
+	if len(skillDirs) == 0 {
+		return nil
+	}
+	req := requestSkillEnv(r)
+	if envProvider == nil && len(req) == 0 {
+		return nil
+	}
+	return resolveSkillEnv(command, envProvider, req, skillDirs)
+}
+
+func configuredSkillEnv(envProvider SkillEnvProvider, skillName string) map[string]string {
+	if envProvider == nil || skillName == "" {
+		return nil
+	}
+	return envProvider(skillName)
+}
+
+func requestSkillEnv(r *Registry) map[string]string {
+	if r == nil {
+		return nil
+	}
+	return r.RequestSkillEnv()
+}
+
+func skillNameFromCommand(command string, skillDirs []string) string {
 	for _, dir := range skillDirs {
-		if strings.Contains(command, dir) {
-			rest := command[strings.Index(command, dir)+len(dir):]
+		if dir == "" {
+			continue
+		}
+		candidates := []string{dir}
+		if abs, err := filepath.Abs(dir); err == nil && abs != dir {
+			candidates = append(candidates, abs)
+		}
+		for _, candidate := range candidates {
+			idx := strings.Index(command, candidate)
+			if idx < 0 {
+				continue
+			}
+			rest := command[idx+len(candidate):]
 			if len(rest) > 0 && rest[0] == '/' {
 				rest = rest[1:]
 			}
 			parts := strings.SplitN(rest, "/", 2)
 			if len(parts) > 0 && parts[0] != "" {
-				if env := envProvider(parts[0]); env != nil {
-					return env
-				}
+				return parts[0]
 			}
 		}
 	}
-	// 2. sandbox /skills/<name>/... — fixed mount layout
 	if idx := strings.Index(command, "/skills/"); idx >= 0 {
 		rest := command[idx+len("/skills/"):]
 		parts := strings.SplitN(rest, "/", 2)
 		if len(parts) > 0 && parts[0] != "" {
-			if env := envProvider(parts[0]); env != nil {
-				return env
-			}
+			return parts[0]
 		}
+	}
+	return ""
+}
+
+func mergeRequestSkillEnvForSkill(skillName string, base map[string]string, requestEnv map[string]string, skillDirs []string) map[string]string {
+	if len(base) == 0 && len(requestEnv) == 0 {
+		return nil
+	}
+	out := copyEnvMap(base)
+	if len(requestEnv) == 0 || skillName == "" {
+		return out
+	}
+	allowed := requiredEnvSetForSkill(skillName, skillDirs)
+	if len(allowed) == 0 {
+		return out
+	}
+	if out == nil {
+		out = make(map[string]string)
+	}
+	for k, v := range requestEnv {
+		if allowed[k] {
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func copyEnvMap(src map[string]string) map[string]string {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]string, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func requiredEnvSetForSkill(skillName string, skillDirs []string) map[string]bool {
+	for _, dir := range skillDirs {
+		if dir == "" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, skillName, "SKILL.md"))
+		if err != nil {
+			continue
+		}
+		names := requiredEnvNames(data)
+		if len(names) == 0 {
+			return nil
+		}
+		out := make(map[string]bool, len(names))
+		for _, name := range names {
+			out[name] = true
+		}
+		return out
 	}
 	return nil
 }
@@ -370,10 +464,7 @@ func registerHostExec(r *Registry, envProvider SkillEnvProvider, skillDirs []str
 			// daemon secrets from the inherited env. The operator
 			// rarely needs FASTCLAW_STORAGE_DSN reachable from a host
 			// shell, and never needs the model to be able to read it.
-			var skillEnv map[string]string
-			if envProvider != nil && skillDirs != nil {
-				skillEnv = resolveSkillEnv(args.Command, envProvider, skillDirs)
-			}
+			skillEnv := resolveRegistrySkillEnv(args.Command, r, envProvider, skillDirs)
 			cmd.Env = buildSubprocessEnv(skillEnv)
 			out, err := cmd.CombinedOutput()
 			result := string(out)
@@ -441,26 +532,7 @@ func registerSandboxedExec(r *Registry, ex sandbox.Executor) {
 		// container-internal /skills/<name> mount — resolveSkillEnv
 		// matches both).
 		injected := []string{}
-		if envProvider != nil {
-			skillEnv := resolveSkillEnv(args.Command, envProvider, skillDirs)
-			if len(skillEnv) > 0 {
-				var sb strings.Builder
-				for k, v := range skillEnv {
-					sb.WriteString("export ")
-					sb.WriteString(k)
-					sb.WriteString("=")
-					sb.WriteString(shellQuote(v))
-					sb.WriteString("; ")
-					if v == "" {
-						injected = append(injected, k+"=<empty>")
-					} else {
-						injected = append(injected, k+"=<set "+strconv.Itoa(len(v))+"chars>")
-					}
-				}
-				sb.WriteString(command)
-				command = sb.String()
-			}
-		}
+		command = prependSkillEnvExports(command, resolveRegistrySkillEnv(args.Command, r, envProvider, skillDirs), &injected)
 		slog.Info("sandboxed exec",
 			"backend", ex.Backend(),
 			"envProviderSet", envProvider != nil,
@@ -515,6 +587,29 @@ func firstN(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+func prependSkillEnvExports(command string, skillEnv map[string]string, injected *[]string) string {
+	if len(skillEnv) == 0 {
+		return command
+	}
+	var sb strings.Builder
+	for k, v := range skillEnv {
+		sb.WriteString("export ")
+		sb.WriteString(k)
+		sb.WriteString("=")
+		sb.WriteString(shellQuote(v))
+		sb.WriteString("; ")
+		if injected != nil {
+			if v == "" {
+				*injected = append(*injected, k+"=<empty>")
+			} else {
+				*injected = append(*injected, k+"=<set "+strconv.Itoa(len(v))+"chars>")
+			}
+		}
+	}
+	sb.WriteString(command)
+	return sb.String()
 }
 
 // shellQuote single-quote-escapes a value for safe interpolation into

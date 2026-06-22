@@ -26,10 +26,10 @@ func RegisterLoadSkill(r *Registry, skillDirs []string) {
 			},
 		},
 		"required": []string{"name"},
-	}, makeLoadSkill(skillDirs))
+	}, makeLoadSkill(r, skillDirs))
 }
 
-func makeLoadSkill(skillDirs []string) ToolFunc {
+func makeLoadSkill(r *Registry, skillDirs []string) ToolFunc {
 	return func(ctx context.Context, rawArgs json.RawMessage) (string, error) {
 		var args loadSkillArgs
 		if err := json.Unmarshal(rawArgs, &args); err != nil {
@@ -50,7 +50,11 @@ func makeLoadSkill(skillDirs []string) ToolFunc {
 			if err == nil {
 				skillDir, _ := filepath.Abs(filepath.Join(dir, args.Name))
 				content := strings.ReplaceAll(string(data), "{baseDir}", skillDir)
-				if reason := unavailableReason(data); reason != "" {
+				availableEnv := map[string]string(nil)
+				if r != nil {
+					availableEnv = mergeRequestSkillEnvForSkill(args.Name, configuredSkillEnv(r.envProvider, args.Name), r.RequestSkillEnv(), skillDirs)
+				}
+				if reason := unavailableReason(data, availableEnv); reason != "" {
 					content = "[SKILL CURRENTLY UNAVAILABLE: " + reason +
 						". Explain this to the user and ask an administrator to configure the missing requirement before using authenticated operations.]\n\n" +
 						content
@@ -96,40 +100,65 @@ type loadSkillRequires struct {
 	Env []string `json:"env"`
 }
 
-func unavailableReason(data []byte) string {
+func unavailableReason(data []byte, available map[string]string) string {
+	missing := missingRequiredEnv(data, available)
+	if len(missing) == 0 {
+		return ""
+	}
+	return "missing required env var(s): " + strings.Join(missing, ", ")
+}
+
+func missingRequiredEnv(data []byte, available map[string]string) []string {
+	missing := make([]string, 0)
+	for _, name := range requiredEnvNames(data) {
+		if !skillEnvAvailable(name, available) {
+			missing = append(missing, name)
+		}
+	}
+	return missing
+}
+
+func requiredEnvNames(data []byte) []string {
 	fm := parseLoadSkillFrontmatter(data)
 	if fm == nil || fm.Metadata.Kind != yaml.MappingNode {
-		return ""
+		return nil
 	}
 	var raw interface{}
 	if err := fm.Metadata.Decode(&raw); err != nil {
-		return ""
+		return nil
 	}
 	blob, err := json.Marshal(normalizeYAML(raw))
 	if err != nil {
-		return ""
+		return nil
 	}
 	var meta loadSkillMetadata
 	if err := json.Unmarshal(blob, &meta); err != nil {
-		return ""
+		return nil
 	}
 	oc := meta.FastClaw
 	if oc == nil {
 		oc = meta.OpenClaw
 	}
 	if oc == nil || oc.Requires == nil {
-		return ""
+		return nil
 	}
-	missing := make([]string, 0)
+	names := make([]string, 0, len(oc.Requires.Env))
 	for _, name := range oc.Requires.Env {
-		if strings.TrimSpace(name) != "" && os.Getenv(name) == "" {
-			missing = append(missing, name)
+		if name = strings.TrimSpace(name); name != "" {
+			names = append(names, name)
 		}
 	}
-	if len(missing) == 0 {
-		return ""
+	return names
+}
+
+func skillEnvAvailable(name string, available map[string]string) bool {
+	if name == "" {
+		return false
 	}
-	return "missing required env var(s): " + strings.Join(missing, ", ")
+	if available != nil && available[name] != "" {
+		return true
+	}
+	return os.Getenv(name) != ""
 }
 
 func parseLoadSkillFrontmatter(data []byte) *loadSkillFrontmatter {
