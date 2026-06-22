@@ -1412,7 +1412,11 @@ export async function deleteAgent(id: string) {
   const res = await apiFetch(`/api/agents/${id}`, {
     method: "DELETE",
   });
-  return res.json();
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data?.ok === false || data?.error) {
+    throw new Error(data?.error || `delete agent failed: ${res.status}`);
+  }
+  return data;
 }
 
 // Skills

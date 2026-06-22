@@ -119,6 +119,7 @@ export default function AgentsPage() {
   const [editAvatar, setEditAvatar] = useState<File | null>(null);
   const [editAvatarPreview, setEditAvatarPreview] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [editLinkCopied, setEditLinkCopied] = useState(false);
   const editAvatarInput = useRef<HTMLInputElement>(null);
 
@@ -260,9 +261,17 @@ export default function AgentsPage() {
 
   const handleDelete = async () => {
     if (!deleteId) return;
-    await deleteAgent(deleteId);
-    setDeleteId(null);
-    fetchAgents();
+    setSaving(true);
+    setDeleteError(null);
+    try {
+      await deleteAgent(deleteId);
+      setDeleteId(null);
+      fetchAgents();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete agent");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -706,7 +715,15 @@ export default function AgentsPage() {
       </Dialog>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+      <AlertDialog
+        open={!!deleteId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteId(null);
+            setDeleteError(null);
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Agent</AlertDialogTitle>
@@ -714,14 +731,16 @@ export default function AgentsPage() {
               Are you sure you want to delete <strong>{deleteId}</strong>?
               This action cannot be undone.
             </AlertDialogDescription>
+            {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
+              disabled={saving}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {saving ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
