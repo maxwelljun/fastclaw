@@ -286,10 +286,14 @@ func (s *Server) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if channel == "" {
 		channel = "api"
 	}
+	chatterUserID := "api-user"
+	if ident, ok := auth.FromContext(r.Context()); ok && ident.EffectiveUserID() != "" {
+		chatterUserID = ident.EffectiveUserID()
+	}
 	msg := bus.InboundMessage{
 		Channel:   channel,
 		ChatID:    sessionKey,
-		UserID:    "api-user",
+		UserID:    chatterUserID,
 		Text:      userText,
 		PeerKind:  "dm",
 		Params:    req.Params,
