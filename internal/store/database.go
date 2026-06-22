@@ -2267,28 +2267,60 @@ func (d *DBStore) SaveAgent(ctx context.Context, agent *AgentRecord) error {
 }
 
 func (d *DBStore) DeleteAgent(ctx context.Context, agentID string) error {
+	type deletePlan struct {
+		table  string
+		column string
+		value  any
+	}
+	var plans []deletePlan
+	addPlan := func(table, column string, value any) error {
+		has, err := d.tableHasColumn(ctx, table, column)
+		if err != nil {
+			return err
+		}
+		if has {
+			plans = append(plans, deletePlan{table: table, column: column, value: value})
+		}
+		return nil
+	}
+	for _, t := range []string{"agent_files", "sessions", "session_messages", "session_events", "cron_jobs", "apikey_agents", "projects", "project_runtimes"} {
+		if err := addPlan(t, "agent_id", agentID); err != nil {
+			return err
+		}
+	}
+	configsHasAgentID, err := d.tableHasColumn(ctx, "configs", "agent_id")
+	if err != nil {
+		return err
+	}
+	configsHasScopeID, err := d.tableHasColumn(ctx, "configs", "scope_id")
+	if err != nil {
+		return err
+	}
+
 	tx, err := d.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	for _, t := range []string{"agent_files", "sessions", "session_messages", "session_events", "cron_jobs"} {
+	for _, plan := range plans {
 		if _, err := tx.ExecContext(ctx,
-			fmt.Sprintf(`DELETE FROM %s WHERE agent_id = %s`, t, d.ph(1)), agentID); err != nil {
+			fmt.Sprintf(`DELETE FROM %s WHERE %s = %s`, plan.table, plan.column, d.ph(1)), plan.value); err != nil {
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx,
-		fmt.Sprintf(`DELETE FROM apikey_agents WHERE agent_id = %s`, d.ph(1)), agentID); err != nil {
-		return err
-	}
-	// Drop every config row pointing at this agent — owner's official
-	// rows (user_id='', agent_id=X), agent owner's per-agent overrides
-	// (user_id=owner, agent_id=X), and any non-owner per-agent
-	// overrides (user_id=other, agent_id=X).
-	if _, err := tx.ExecContext(ctx,
-		fmt.Sprintf(`DELETE FROM configs WHERE agent_id = %s`, d.ph(1)), agentID); err != nil {
-		return err
+	// Drop every config row pointing at this agent. Current installs use
+	// configs.scope/scope_id; older prerelease schemas used agent_id.
+	if configsHasAgentID {
+		if _, err := tx.ExecContext(ctx,
+			fmt.Sprintf(`DELETE FROM configs WHERE agent_id = %s`, d.ph(1)), agentID); err != nil {
+			return err
+		}
+	} else if configsHasScopeID {
+		if _, err := tx.ExecContext(ctx,
+			fmt.Sprintf(`DELETE FROM configs WHERE scope = %s AND scope_id = %s`, d.ph(1), d.ph(2)),
+			"agent", agentID); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.ExecContext(ctx,
 		fmt.Sprintf(`DELETE FROM agents WHERE id = %s`, d.ph(1)), agentID); err != nil {

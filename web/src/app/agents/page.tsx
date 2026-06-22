@@ -16,7 +16,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -735,13 +734,14 @@ export default function AgentsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={saving}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
+            <Button
+              type="button"
               onClick={handleDelete}
               disabled={saving}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {saving ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
