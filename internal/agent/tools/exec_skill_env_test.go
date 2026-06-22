@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -225,5 +226,26 @@ Run dcli account balance.`
 	}
 	if _, ok := got["UNDECLARED"]; ok {
 		t.Fatal("undeclared request env should not be injected")
+	}
+}
+
+func TestPrepareSkillCLICommandBootstrapsDCLI(t *testing.T) {
+	cmd := `dcli account balance --inst-type SWAP --json`
+	got := prepareSkillCLICommand(cmd)
+	if !strings.Contains(got, `command -v dcli`) {
+		t.Fatalf("bootstrap should check dcli availability: %s", got)
+	}
+	if !strings.Contains(got, `deepcoinapi/agent-cli/main/install.sh`) {
+		t.Fatalf("bootstrap should install dcli: %s", got)
+	}
+	if !strings.Contains(got, cmd) {
+		t.Fatalf("bootstrap should preserve original command: %s", got)
+	}
+}
+
+func TestPrepareSkillCLICommandLeavesOtherCommandsAlone(t *testing.T) {
+	cmd := `python3 /workspace/query_balance.py`
+	if got := prepareSkillCLICommand(cmd); got != cmd {
+		t.Fatalf("prepareSkillCLICommand changed non-dcli command: %q", got)
 	}
 }

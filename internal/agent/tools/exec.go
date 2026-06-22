@@ -177,6 +177,7 @@ func makeExecToolFull(r *Registry, sbCfg *SandboxConfig, envProvider SkillEnvPro
 
 		if useSandbox && sbCfg != nil && sbCfg.Pool != nil {
 			sb := sbCfg.Pool.Get(sbCfg.AgentID, sbCfg.Image, sbCfg.Workspace, sbCfg.Policy)
+			command = prepareSkillCLICommand(command)
 			command = prependSkillEnvExports(command, resolveRegistrySkillEnv(args.Command, r, envProvider, skillDirs), nil)
 			out, err := sb.Exec(execCtx, command, "/workspace")
 			return MetaSandboxPrefix + out, err
@@ -370,6 +371,18 @@ func commandReferencesWorkspaceScript(command string) bool {
 
 func commandReferencesSkillCLI(command string) bool {
 	return commandContainsShellWord(command, "dcli")
+}
+
+func prepareSkillCLICommand(command string) string {
+	if !commandReferencesSkillCLI(command) {
+		return command
+	}
+	return `export PATH="/root/.local/bin:$PATH"
+if ! command -v dcli >/dev/null 2>&1; then
+  curl -fsSL https://raw.githubusercontent.com/deepcoinapi/agent-cli/main/install.sh | sh >/dev/null
+  export PATH="/root/.local/bin:$PATH"
+fi
+` + command
 }
 
 func commandContainsShellWord(command, word string) bool {
@@ -642,6 +655,7 @@ func registerSandboxedExec(r *Registry, ex sandbox.Executor) {
 		// container-internal /skills/<name> mount — resolveSkillEnv
 		// matches both).
 		injected := []string{}
+		command = prepareSkillCLICommand(command)
 		command = prependSkillEnvExports(command, resolveRegistrySkillEnv(args.Command, r, envProvider, skillDirs), &injected)
 		slog.Info("sandboxed exec",
 			"backend", ex.Backend(),
