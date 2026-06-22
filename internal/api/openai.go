@@ -478,9 +478,7 @@ func (s *Server) fullResponse(w http.ResponseWriter, reply, chatID, model string
 func resolveAgent(space *UserSpaceView, agentID string) *agent.Agent {
 	mgr := space.Agents
 	if agentID != "" {
-		if ag := mgr.AgentByID(agentID); ag != nil {
-			return ag
-		}
+		return mgr.AgentByID(agentID)
 	}
 	if def := mgr.DefaultAgent(); def != nil {
 		return def
