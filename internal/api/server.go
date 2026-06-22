@@ -160,6 +160,9 @@ func buildAgentList(space *UserSpaceView, ident auth.Identity) []map[string]stri
 // userSpaceFor resolves the user space from the request's identity.
 func (s *Server) userSpaceFor(r *http.Request) (*UserSpaceView, error) {
 	uid := config.UserIDFromContext(r.Context())
+	if ident, ok := auth.FromContext(r.Context()); ok {
+		uid = ident.AgentOwnerUserID()
+	}
 	if uid == "" {
 		return nil, errors.New("unauthorized")
 	}

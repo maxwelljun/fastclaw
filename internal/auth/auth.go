@@ -34,6 +34,11 @@ const SessionTTL = 30 * 24 * time.Hour
 type Identity struct {
 	UserID string
 	Role   string
+	// OwnerUserID is set when a request is rebound to an app_user via
+	// X-Fastclaw-End-User / OpenAI user. It preserves the api_key owner
+	// so API chat can resolve the owner's agents while storing session
+	// and memory under the app_user.
+	OwnerUserID string
 
 	// AuthMethod is "session" or "apikey".
 	AuthMethod string
@@ -62,6 +67,16 @@ func (i Identity) EffectiveUserID() string {
 		return i.ActAsUserID
 	}
 	return i.UserID
+}
+
+// AgentOwnerUserID is the user space where agent definitions should be
+// resolved. App-user API calls execute an owner's agent but keep
+// EffectiveUserID scoped to the downstream end-user.
+func (i Identity) AgentOwnerUserID() string {
+	if i.OwnerUserID != "" {
+		return i.OwnerUserID
+	}
+	return i.EffectiveUserID()
 }
 
 // IsActingAs reports whether super_admin is impersonating another user.
@@ -273,10 +288,15 @@ func (r *Resolver) SwitchToAppUser(ctx context.Context, ident Identity, external
 	}
 	// ident.UserID is the api_key's owner account here (pre-switch); key the
 	// app_user on it so rotating/replacing the api_key keeps the same user.
-	acc, err := r.accounts.EnsureAppUser(ctx, ident.UserID, externalID, "", ident.APIKeyID)
+	ownerUserID := ident.UserID
+	if ident.OwnerUserID != "" {
+		ownerUserID = ident.OwnerUserID
+	}
+	acc, err := r.accounts.EnsureAppUser(ctx, ownerUserID, externalID, "", ident.APIKeyID)
 	if err != nil {
 		return ident, err
 	}
+	ident.OwnerUserID = ownerUserID
 	ident.UserID = acc.ID
 	ident.Role = acc.Role
 	return ident, nil
