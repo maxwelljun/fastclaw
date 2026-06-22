@@ -29,7 +29,7 @@ type chatCompletionRequest struct {
 	User     string        `json:"user,omitempty"`
 	// AgentID is a fastclaw extension: lets the caller pick the agent
 	// in the request body instead of (or in addition to) the
-	// `x-fastclaw-agent-id` header. Body wins when both are set —
+	// `x-dclaw-agent-id` header. Body wins when both are set —
 	// matches the pattern used for `user`. Optional.
 	AgentID string `json:"agent_id,omitempty"`
 	// Params is a fastclaw extension: a freeform structured-parameter
@@ -205,7 +205,7 @@ func (s *Server) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	// Body field beats header — same precedence as `user`. Lets app
 	// callers send everything in one JSON without juggling headers.
-	agentID := r.Header.Get("x-fastclaw-agent-id")
+	agentID := requestHeader(r, "x-dclaw-agent-id", "x-fastclaw-agent-id")
 	if req.AgentID != "" {
 		agentID = req.AgentID
 	}
@@ -234,7 +234,7 @@ func (s *Server) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build session key from header
-	sessionKey := r.Header.Get("x-fastclaw-session-key")
+	sessionKey := requestHeader(r, "x-dclaw-session-key", "x-fastclaw-session-key")
 	if sessionKey == "" {
 		sessionKey = "api-" + fmt.Sprintf("%d", time.Now().UnixNano())
 	}
@@ -279,10 +279,10 @@ func (s *Server) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build inbound message.
-	// X-Fastclaw-Channel lets callers override the reply channel so
+	// X-DClaw-Channel lets callers override the reply channel so
 	// cron jobs created during this turn route through the right
 	// adapter (e.g. "pinclaw" → plugin channel.send → Cloud API).
-	channel := r.Header.Get("x-fastclaw-channel")
+	channel := requestHeader(r, "x-dclaw-channel", "x-fastclaw-channel")
 	if channel == "" {
 		channel = "api"
 	}
@@ -324,15 +324,26 @@ func (s *Server) HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-const skillEnvHeaderPrefix = "X-Fastclaw-Skill-Env-"
+const skillEnvHeaderPrefix = "X-DClaw-Skill-Env-"
+const legacySkillEnvHeaderPrefix = "X-Fastclaw-Skill-Env-"
+
+func requestHeader(r *http.Request, names ...string) string {
+	for _, name := range names {
+		if v := r.Header.Get(name); v != "" {
+			return v
+		}
+	}
+	return ""
+}
 
 func extractSkillEnvHeaders(h http.Header) map[string]string {
 	env := make(map[string]string)
 	for name, values := range h {
-		if !strings.HasPrefix(strings.ToLower(name), strings.ToLower(skillEnvHeaderPrefix)) {
+		prefix := matchingSkillEnvHeaderPrefix(name)
+		if prefix == "" {
 			continue
 		}
-		key := normalizeSkillEnvHeaderName(name[len(skillEnvHeaderPrefix):])
+		key := normalizeSkillEnvHeaderName(name[len(prefix):])
 		if key == "" || skillEnvKeyBlocked(key) {
 			continue
 		}
@@ -347,6 +358,16 @@ func extractSkillEnvHeaders(h http.Header) map[string]string {
 		return nil
 	}
 	return env
+}
+
+func matchingSkillEnvHeaderPrefix(name string) string {
+	lowerName := strings.ToLower(name)
+	for _, prefix := range []string{skillEnvHeaderPrefix, legacySkillEnvHeaderPrefix} {
+		if strings.HasPrefix(lowerName, strings.ToLower(prefix)) {
+			return prefix
+		}
+	}
+	return ""
 }
 
 func normalizeSkillEnvHeaderName(s string) string {

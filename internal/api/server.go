@@ -112,7 +112,7 @@ func (s *Server) RegisterAdminRoutes(mux *http.ServeMux) {}
 func (s *Server) handleCORS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, x-fastclaw-agent-id, x-fastclaw-session-key")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, x-dclaw-agent-id, x-dclaw-session-key, x-dclaw-end-user, x-dclaw-channel, x-dclaw-skill-env-dc_api_key, x-dclaw-skill-env-dc_secret_key, x-dclaw-skill-env-dc_passphrase, x-fastclaw-agent-id, x-fastclaw-session-key, x-fastclaw-end-user, x-fastclaw-channel, x-fastclaw-skill-env-dc_api_key, x-fastclaw-skill-env-dc_secret_key, x-fastclaw-skill-env-dc_passphrase")
 	w.Header().Set("Access-Control-Max-Age", "86400")
 	w.WriteHeader(http.StatusNoContent)
 }

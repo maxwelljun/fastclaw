@@ -308,7 +308,11 @@ func (r *Resolver) SwitchToAppUser(ctx context.Context, ident Identity, external
 // (apikey, header) and switch the request identity to it. Sessions and
 // agent_files written under that identity then partition cleanly per
 // end-user instead of piling up under the api_key owner.
-const EndUserHeader = "X-Fastclaw-End-User"
+const EndUserHeader = "X-DClaw-End-User"
+
+// LegacyEndUserHeader is accepted for backwards compatibility with
+// clients using the original FastClaw-branded API header.
+const LegacyEndUserHeader = "X-Fastclaw-End-User"
 
 // ErrUnauthorized is returned when no valid credential is present.
 var ErrUnauthorized = errors.New("unauthorized")
@@ -432,6 +436,10 @@ done:
 	// body for clients that prefer the OpenAI shape; that path calls
 	// SwitchToAppUser explicitly after parsing the body.
 	if eu := strings.TrimSpace(req.Header.Get(EndUserHeader)); eu != "" {
+		if next, swErr := r.SwitchToAppUser(req.Context(), ident, eu); swErr == nil {
+			ident = next
+		}
+	} else if eu := strings.TrimSpace(req.Header.Get(LegacyEndUserHeader)); eu != "" {
 		if next, swErr := r.SwitchToAppUser(req.Context(), ident, eu); swErr == nil {
 			ident = next
 		}

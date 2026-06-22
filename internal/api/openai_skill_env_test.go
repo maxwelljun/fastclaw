@@ -7,10 +7,10 @@ import (
 
 func TestExtractSkillEnvHeadersNormalizesAndFilters(t *testing.T) {
 	h := http.Header{}
-	h.Set("X-Fastclaw-Skill-Env-DC-API-KEY", " key ")
-	h.Set("X-Fastclaw-Skill-Env-DC.SECRET_KEY", "secret")
-	h.Set("X-Fastclaw-Skill-Env-FASTCLAW_STORAGE_DSN", "dsn")
-	h.Set("X-Fastclaw-Skill-Env-1BAD", "bad")
+	h.Set("X-DClaw-Skill-Env-DC-API-KEY", " key ")
+	h.Set("X-DClaw-Skill-Env-DC.SECRET_KEY", "secret")
+	h.Set("X-DClaw-Skill-Env-FASTCLAW_STORAGE_DSN", "dsn")
+	h.Set("X-DClaw-Skill-Env-1BAD", "bad")
 
 	got := extractSkillEnvHeaders(h)
 	if got["DC_API_KEY"] != "key" {
@@ -24,5 +24,15 @@ func TestExtractSkillEnvHeadersNormalizesAndFilters(t *testing.T) {
 	}
 	if _, ok := got["1BAD"]; ok {
 		t.Fatal("invalid env key should not be extracted")
+	}
+}
+
+func TestExtractSkillEnvHeadersAcceptsLegacyFastClawPrefix(t *testing.T) {
+	h := http.Header{}
+	h.Set("X-Fastclaw-Skill-Env-DC_API_KEY", "legacy")
+
+	got := extractSkillEnvHeaders(h)
+	if got["DC_API_KEY"] != "legacy" {
+		t.Fatalf("DC_API_KEY = %q", got["DC_API_KEY"])
 	}
 }
