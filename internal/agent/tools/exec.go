@@ -254,7 +254,7 @@ func resolveRegistrySkillEnv(command string, r *Registry, envProvider SkillEnvPr
 		return env
 	}
 	if r == nil || r.ActiveRequestSkill() == "" {
-		return nil
+		return mergeRequestSkillEnvForCommand(command, nil, req, skillDirs)
 	}
 	return mergeRequestSkillEnvForSkill(r.ActiveRequestSkill(), configuredSkillEnv(envProvider, r.ActiveRequestSkill()), req, skillDirs)
 }
@@ -333,6 +333,32 @@ func mergeRequestSkillEnvForSkill(skillName string, base map[string]string, requ
 	return out
 }
 
+func mergeRequestSkillEnvForCommand(command string, base map[string]string, requestEnv map[string]string, skillDirs []string) map[string]string {
+	if len(base) == 0 && len(requestEnv) == 0 {
+		return nil
+	}
+	out := copyEnvMap(base)
+	if len(requestEnv) == 0 || command == "" {
+		return out
+	}
+	allowed := requiredEnvUnion(skillDirs)
+	if len(allowed) == 0 {
+		return out
+	}
+	for k, v := range requestEnv {
+		if allowed[k] && strings.Contains(command, k) {
+			if out == nil {
+				out = make(map[string]string)
+			}
+			out[k] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func copyEnvMap(src map[string]string) map[string]string {
 	if len(src) == 0 {
 		return nil
@@ -364,6 +390,35 @@ func requiredEnvSetForSkill(skillName string, skillDirs []string) map[string]boo
 		return out
 	}
 	return nil
+}
+
+func requiredEnvUnion(skillDirs []string) map[string]bool {
+	out := make(map[string]bool)
+	for _, dir := range skillDirs {
+		if dir == "" {
+			continue
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(dir, entry.Name(), "SKILL.md"))
+			if err != nil {
+				continue
+			}
+			for _, name := range requiredEnvNames(data) {
+				out[name] = true
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // mergeEnv merges base env with additional vars. Additional vars override base.

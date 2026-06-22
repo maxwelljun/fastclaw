@@ -103,3 +103,50 @@ Run.`
 		t.Fatal("undeclared request env should not be injected")
 	}
 }
+
+func TestResolveRegistrySkillEnvInjectsReferencedDeclaredRequestEnv(t *testing.T) {
+	skillsDir := filepath.Join(t.TempDir(), "skills")
+	skillDir := filepath.Join(skillsDir, "deepcoin-portfolio")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `---
+name: deepcoin-portfolio
+metadata:
+  openclaw:
+    requires:
+      env: ["DC_API_KEY", "DC_SECRET_KEY", "DC_PASSPHRASE"]
+---
+
+Run.`
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewRegistry(t.TempDir(), t.TempDir())
+	r.SetRequestSkillEnv(map[string]string{
+		"DC_API_KEY":    "key",
+		"DC_SECRET_KEY": "secret",
+		"DC_PASSPHRASE": "pass",
+		"UNDECLARED":    "drop",
+	})
+
+	got := resolveRegistrySkillEnv(
+		`python3 - <<'EOF'
+import os
+print(os.environ["DC_API_KEY"], os.environ["DC_SECRET_KEY"])
+EOF`,
+		r,
+		nil,
+		[]string{skillsDir},
+	)
+	if got["DC_API_KEY"] != "key" || got["DC_SECRET_KEY"] != "secret" {
+		t.Fatalf("referenced declared request env not injected: %#v", got)
+	}
+	if _, ok := got["DC_PASSPHRASE"]; ok {
+		t.Fatal("declared but unreferenced env should not be injected by command fallback")
+	}
+	if _, ok := got["UNDECLARED"]; ok {
+		t.Fatal("undeclared request env should not be injected")
+	}
+}
