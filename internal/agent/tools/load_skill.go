@@ -48,6 +48,9 @@ func makeLoadSkill(r *Registry, skillDirs []string) ToolFunc {
 			skillPath := filepath.Join(dir, args.Name, "SKILL.md")
 			data, err := os.ReadFile(skillPath)
 			if err == nil {
+				if r != nil {
+					r.SetActiveRequestSkill(args.Name)
+				}
 				skillDir, _ := filepath.Abs(filepath.Join(dir, args.Name))
 				content := strings.ReplaceAll(string(data), "{baseDir}", skillDir)
 				availableEnv := map[string]string(nil)

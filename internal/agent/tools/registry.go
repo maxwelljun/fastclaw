@@ -290,6 +290,11 @@ type Registry struct {
 	// each turn and cleared at the end; unlike envProvider values it is
 	// never persisted to config or rendered into prompts.
 	requestSkillEnv map[string]string
+	// activeRequestSkill is set by load_skill for the current turn so
+	// follow-up exec calls that do not include a /skills/<name> path can
+	// still receive that skill's declared request env. Cleared with
+	// requestSkillEnv at end of turn.
+	activeRequestSkill string
 	// turnFailures records (toolName, argsHash) → previous error
 	// summary for tool calls that already failed earlier in the
 	// current turn. StartTurn resets this map; tool implementations
@@ -493,6 +498,7 @@ func (r *Registry) SetProjectID(projectID string) {
 func (r *Registry) SetRequestSkillEnv(env map[string]string) {
 	if len(env) == 0 {
 		r.requestSkillEnv = nil
+		r.activeRequestSkill = ""
 		return
 	}
 	cp := make(map[string]string, len(env))
@@ -502,6 +508,18 @@ func (r *Registry) SetRequestSkillEnv(env map[string]string) {
 		}
 	}
 	r.requestSkillEnv = cp
+}
+
+// SetActiveRequestSkill marks the skill most recently loaded in this
+// turn. Exec may use it as context when the command itself does not
+// reference a skill path.
+func (r *Registry) SetActiveRequestSkill(name string) {
+	r.activeRequestSkill = name
+}
+
+// ActiveRequestSkill returns the skill most recently loaded in this turn.
+func (r *Registry) ActiveRequestSkill() string {
+	return r.activeRequestSkill
 }
 
 // RequestSkillEnv returns a copy of the current per-turn skill env

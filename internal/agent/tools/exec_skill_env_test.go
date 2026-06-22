@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -52,6 +54,50 @@ Run.`
 	}
 	if got["OTHER_CONFIG"] != "keep" {
 		t.Fatalf("configured env should be preserved, got %q", got["OTHER_CONFIG"])
+	}
+	if _, ok := got["UNDECLARED"]; ok {
+		t.Fatal("undeclared request env should not be injected")
+	}
+}
+
+func TestResolveRegistrySkillEnvUsesLoadedSkillForPlainCommand(t *testing.T) {
+	skillsDir := filepath.Join(t.TempDir(), "skills")
+	skillDir := filepath.Join(skillsDir, "deepcoin-portfolio")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `---
+name: deepcoin-portfolio
+metadata:
+  openclaw:
+    requires:
+      env: ["DC_API_KEY", "DC_SECRET_KEY", "DC_PASSPHRASE"]
+---
+
+Run.`
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewRegistry(t.TempDir(), t.TempDir())
+	r.SetRequestSkillEnv(map[string]string{
+		"DC_API_KEY":    "key",
+		"DC_SECRET_KEY": "secret",
+		"DC_PASSPHRASE": "pass",
+		"UNDECLARED":    "drop",
+	})
+	RegisterLoadSkill(r, []string{skillsDir})
+	rawArgs, err := json.Marshal(map[string]string{"name": "deepcoin-portfolio"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.GetFunc("load_skill")(context.Background(), rawArgs); err != nil {
+		t.Fatal(err)
+	}
+
+	got := resolveRegistrySkillEnv("echo $DC_API_KEY", r, nil, []string{skillsDir})
+	if got["DC_API_KEY"] != "key" || got["DC_SECRET_KEY"] != "secret" || got["DC_PASSPHRASE"] != "pass" {
+		t.Fatalf("declared request env not injected for loaded skill: %#v", got)
 	}
 	if _, ok := got["UNDECLARED"]; ok {
 		t.Fatal("undeclared request env should not be injected")

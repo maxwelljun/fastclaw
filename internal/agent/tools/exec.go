@@ -250,7 +250,13 @@ func resolveRegistrySkillEnv(command string, r *Registry, envProvider SkillEnvPr
 	if envProvider == nil && len(req) == 0 {
 		return nil
 	}
-	return resolveSkillEnv(command, envProvider, req, skillDirs)
+	if env := resolveSkillEnv(command, envProvider, req, skillDirs); len(env) > 0 {
+		return env
+	}
+	if r == nil || r.ActiveRequestSkill() == "" {
+		return nil
+	}
+	return mergeRequestSkillEnvForSkill(r.ActiveRequestSkill(), configuredSkillEnv(envProvider, r.ActiveRequestSkill()), req, skillDirs)
 }
 
 func configuredSkillEnv(envProvider SkillEnvProvider, skillName string) map[string]string {
