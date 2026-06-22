@@ -433,19 +433,12 @@ func (t *Telegram) sendSingleMessage(chatID int64, text string, msg bus.Outbound
 	}
 
 	_, err := t.bot.Send(tgMsg)
-	if err != nil && msg.ParseMode == "MarkdownV2" {
-		// Fallback to HTML
-		slog.Warn("telegram MarkdownV2 failed, trying HTML", "error", err)
-		tgMsg.ParseMode = "HTML"
-		tgMsg.Text = text // use original text for HTML
+	if err != nil && msg.ParseMode != "" {
+		slog.Warn("telegram formatted send failed, sending plain",
+			"parseMode", msg.ParseMode, "error", err)
+		tgMsg.ParseMode = ""
+		tgMsg.Text = text
 		_, err = t.bot.Send(tgMsg)
-		if err != nil {
-			// Fallback to plain text
-			slog.Warn("telegram HTML failed, sending plain", "error", err)
-			tgMsg.ParseMode = ""
-			tgMsg.Text = text
-			_, err = t.bot.Send(tgMsg)
-		}
 	}
 	return err
 }
@@ -470,16 +463,12 @@ func (t *Telegram) editMessage(chatID int64, msg bus.OutboundMessage) error {
 	}
 
 	_, err = t.bot.Send(edit)
-	if err != nil && msg.ParseMode == "MarkdownV2" {
-		// Fallback to HTML then plain
-		edit.ParseMode = "HTML"
+	if err != nil && msg.ParseMode != "" {
+		slog.Warn("telegram formatted edit failed, sending plain",
+			"parseMode", msg.ParseMode, "error", err)
+		edit.ParseMode = ""
 		edit.Text = msg.Text
 		_, err = t.bot.Send(edit)
-		if err != nil {
-			edit.ParseMode = ""
-			edit.Text = msg.Text
-			_, err = t.bot.Send(edit)
-		}
 	}
 	return err
 }
