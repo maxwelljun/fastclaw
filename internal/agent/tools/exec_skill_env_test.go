@@ -238,6 +238,9 @@ func TestPrepareSkillCLICommandBootstrapsDCLI(t *testing.T) {
 	if !strings.Contains(got, `deepcoinapi/agent-cli/main/install.sh`) {
 		t.Fatalf("bootstrap should install dcli: %s", got)
 	}
+	if !strings.Contains(got, `dcli-install.sha256`) {
+		t.Fatalf("bootstrap should track dcli installer updates: %s", got)
+	}
 	if !strings.Contains(got, cmd) {
 		t.Fatalf("bootstrap should preserve original command: %s", got)
 	}

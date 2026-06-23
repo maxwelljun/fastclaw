@@ -378,10 +378,26 @@ func prepareSkillCLICommand(command string) string {
 		return command
 	}
 	return `export PATH="/root/.local/bin:$PATH"
-if ! command -v dcli >/dev/null 2>&1; then
-  curl -fsSL https://raw.githubusercontent.com/deepcoinapi/agent-cli/main/install.sh | sh >/dev/null
-  export PATH="/root/.local/bin:$PATH"
+_fc_dcli_install_url="https://raw.githubusercontent.com/deepcoinapi/agent-cli/main/install.sh"
+_fc_dcli_stamp="${HOME:-/root}/.local/share/fastclaw/dcli-install.sha256"
+_fc_dcli_install="$(mktemp)"
+if curl -fsSL "$_fc_dcli_install_url" -o "$_fc_dcli_install"; then
+  _fc_dcli_sha="$(sha256sum "$_fc_dcli_install" | awk '{print $1}')"
+  _fc_dcli_seen=""
+  [ -f "$_fc_dcli_stamp" ] && _fc_dcli_seen="$(cat "$_fc_dcli_stamp" 2>/dev/null || true)"
+  if ! command -v dcli >/dev/null 2>&1 || [ "$_fc_dcli_seen" != "$_fc_dcli_sha" ]; then
+    sh "$_fc_dcli_install" >/dev/null
+    mkdir -p "$(dirname "$_fc_dcli_stamp")"
+    printf '%s' "$_fc_dcli_sha" > "$_fc_dcli_stamp"
+  fi
+  rm -f "$_fc_dcli_install"
+else
+  rm -f "$_fc_dcli_install"
+  if ! command -v dcli >/dev/null 2>&1; then
+    curl -fsSL "$_fc_dcli_install_url" | sh >/dev/null
+  fi
 fi
+  export PATH="/root/.local/bin:$PATH"
 ` + command
 }
 
