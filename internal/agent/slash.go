@@ -56,7 +56,7 @@ func (a *Agent) handleSlashCommand(msg bus.InboundMessage) slashResult {
 	case "/start":
 		return slashResult{
 			handled: true,
-			reply:   fmt.Sprintf("👋 Hi! I'm %s, your AI assistant.\n\nJust send me a message to chat. Use /help to see available commands.", a.slashDisplayName()),
+			reply:   fmt.Sprintf("👋 Hi! I'm %s, your AI assistant.", a.slashDisplayName()),
 		}
 
 	case "/new", "/reset":

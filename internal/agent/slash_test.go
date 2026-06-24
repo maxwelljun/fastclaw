@@ -19,6 +19,9 @@ func TestSlashStartUsesDisplayName(t *testing.T) {
 	if strings.Contains(res.reply, "agt_123") {
 		t.Fatalf("reply leaked internal agent id: %q", res.reply)
 	}
+	if strings.Contains(res.reply, "Just send me a message") {
+		t.Fatalf("reply includes extra usage hint: %q", res.reply)
+	}
 }
 
 func TestSlashStartFallsBackToAgentID(t *testing.T) {
