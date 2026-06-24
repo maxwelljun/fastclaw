@@ -56,7 +56,7 @@ func (a *Agent) handleSlashCommand(msg bus.InboundMessage) slashResult {
 	case "/start":
 		return slashResult{
 			handled: true,
-			reply:   fmt.Sprintf("👋 Hi! I'm %s, your AI assistant.\n\nJust send me a message to chat. Use /help to see available commands.", a.name),
+			reply:   fmt.Sprintf("👋 Hi! I'm %s, your AI assistant.\n\nJust send me a message to chat. Use /help to see available commands.", a.slashDisplayName()),
 		}
 
 	case "/new", "/reset":
@@ -438,6 +438,13 @@ func (a *Agent) slashModel(msg bus.InboundMessage, model string) slashResult {
 	old := a.model
 	a.model = model
 	return slashResult{handled: true, reply: fmt.Sprintf("🤖 Model switched: `%s` → `%s`", old, model)}
+}
+
+func (a *Agent) slashDisplayName() string {
+	if name := strings.TrimSpace(a.displayName); name != "" {
+		return name
+	}
+	return a.name
 }
 
 // listPersonalities finds SOUL-<name>.md files in workspace.
